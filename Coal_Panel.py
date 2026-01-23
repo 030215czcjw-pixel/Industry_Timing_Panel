@@ -191,403 +191,533 @@ df_res3 = Backtest(raw_data,
                   sell_condition = "(df['电厂月耗同比'] < 0) & (df['煤矿库存同比'] > 0)"
 )
 
-st.title("动力煤面板")
-st.divider()
+# 计算策略最终净值
+final_nav1 = df_res1['仓位净值'].iloc[-1]
+final_nav2 = df_res2['仓位净值'].iloc[-1]
+final_nav3 = df_res3['仓位净值'].iloc[-1]
+
+# 计算先验仓位最终净值
+prior_nav = df_res1['先验仓位净值'].iloc[-1]
+
+# 计算超额净值
+final_excess_nav1 = final_nav1 - prior_nav
+final_excess_nav2 = final_nav2 - prior_nav
+final_excess_nav3 = final_nav3 - prior_nav
+
+# 计算最大回撤函数
+def calculate_max_drawdown(df):
+    # 提取有效数据（从第一次变化日期开始）
+    df = df[first_change_date:]
+    roll_max = df['仓位净值'].cummax()
+    drawdown = (df['仓位净值'] - roll_max) / roll_max
+    return drawdown.min()
 
 # 找到先验仓位第一次变化的日期
 # 先验仓位基于P(W)计算，P(W)在前observation_periods + holding_period + 1个周期内为NaN或0
 # 找到P(W)第一次大于0的日期作为起始点
 first_change_date = df_res1[df_res1['P(W)'] > 0].index[0]
 
-st.text("策略1：库存小于需求时买入")
-st.text("策略2：库存小于需求时买入；电厂月耗同比下降和煤矿库存同比上升时卖出")
-st.text("策略3：库存小于需求且库存可用天数小于75%分位数时买入；电厂月耗同比下降和煤矿库存同比上升时卖出")
+# 计算三个策略的最大回撤
+max_dd1 = calculate_max_drawdown(df_res1)
+max_dd2 = calculate_max_drawdown(df_res2)
+max_dd3 = calculate_max_drawdown(df_res3)
+
+st.title("动力煤面板")
 st.divider()
 
-# 创建策略对比图表
-fig = go.Figure()
-# 添加先验仓位净值（所有策略共享）
-fig.add_trace(go.Scatter(
-    x=df_res1.index, 
-    y=df_res1['先验仓位净值'],
-    name='先验净值',
-    line=dict(color='gray', width=2)
-))
-# 添加策略1的仓位净值
-fig.add_trace(go.Scatter(
-    x=df_res1.index, 
-    y=df_res1['仓位净值'],
-    name='策略1',
-    line=dict(color='blue', width=2)
-))
-# 添加策略2的仓位净值
-fig.add_trace(go.Scatter(
-    x=df_res2.index, 
-    y=df_res2['仓位净值'],
-    name='策略2',
-    line=dict(color='orange', width=2)
-))
-# 添加策略3的仓位净值
-fig.add_trace(go.Scatter(
-    x=df_res3.index, 
-    y=df_res3['仓位净值'],
-    name='策略3',
-    line=dict(color='red', width=2)
-))
-
-# 更新图表布局
-fig.update_layout(
-    title='不同策略净值对比',
-    xaxis_title='日期',
-    yaxis_title='净值',
-    height=500,
-    template='plotly_white',
-    showlegend=True,
-    legend=dict(
-        orientation='h',
-        yanchor='bottom',
-        y=1.02,
-        xanchor='right',
-        x=1
-    ),
-    hovermode='x unified'
-)
-
-# 配置x轴，添加range selector和range slider
-fig.update_xaxes(
-    rangeslider_visible=True,
-    tickformat='%Y-%m',
-    tickangle=0,
-    range=[first_change_date, df_res1.index[-1]]  # 设置x轴范围从第一次变化开始
-)
-
-# 显示策略对比图表
-st.plotly_chart(fig, width='stretch')
-st.text("最优策略：策略2：库存小于需求时买入；电厂月耗同比下降和煤矿库存同比上升时卖出")
-# 添加分隔线
+st.markdown("""
+*  **策略1**    
+    库存小于需求时买入
+*  **策略2**    
+    库存小于需求时买入；电厂月耗同比小于0和煤矿库存同比大于0卖出
+*  **策略3**    
+    库存小于需求且库存可用天数小于75%分位数时买入；电厂月耗同比小于0和煤矿库存同比大于0卖出
+""")
 st.divider()
 
-# 创建策略2仓位与煤价对比图表
-fig2 = go.Figure()
-# 添加策略2的仓位（左轴）
-fig2.add_trace(go.Scatter(
-    x=df_res2.index, 
-    y=df_res2['仓位'],
-    name='仓位',
-    line=dict(color='orange', width=2),
-    yaxis='y1'
-))
+# 数据显示与更新功能
+st.markdown("## 数据概览")
 
-# 添加仓位填充区域
-fig2.add_trace(go.Scatter(
-    x=df_res2.index, 
-    y=df_res2['仓位'],
-    name='仓位填充',
-    fill='tozeroy',
-    line=dict(width=0),
-    fillcolor='rgba(255, 165, 0, 0.15)',
-    yaxis='y1',
-    showlegend=False,
-    hoverinfo='skip'  # 鼠标悬停时不显示此填充区域的信息
-))
+# 显示最新数据日期
+latest_date = raw_data['日期'].max()
+st.info(f"**当前数据最新日期**: {latest_date.strftime('%Y-%m')}")
 
-# 添加煤价（右轴）
-fig2.add_trace(go.Scatter(
-    x=df_res2.index, 
-    y=df_res2['秦皇岛5500K动力末煤平仓价'],
-    name='秦皇岛5500K动力末煤平仓价',
-    line=dict(color='red', width=2),
-    yaxis='y2'
-))
+# 创建两列布局：左侧显示数据，右侧上传新数据
+data_col1, data_col2 = st.columns([2, 1])
 
-# 更新图表布局
-fig2.update_layout(
-    title='最优策略仓位与煤价走势对比',
-    xaxis_title='日期',
-    height=500,
-    template='plotly_white',
-    showlegend=True,
-    legend=dict(
-        orientation='h',
-        yanchor='bottom',
-        y=1.02,
-        xanchor='right',
-        x=1
-    ),
-    hovermode='x unified',
-    yaxis=dict(
-        title='仓位',
-        range=[0, 1.1],
-        side='left'
-    ),
-    yaxis2=dict(
-        title='煤价（元/吨）',
-        overlaying='y',
-        side='right'
+with data_col1:
+    st.markdown("### 最新数据预览（最近10条）")
+    # 显示最近10条数据
+    display_df = raw_data.tail(10).copy()
+    # 格式化日期列，只显示年月
+    display_df['日期'] = pd.to_datetime(display_df['日期']).dt.strftime('%Y-%m')
+    display_df = display_df.reset_index(drop=True)
+    st.dataframe(display_df, use_container_width=True)
+
+with data_col2:
+    st.markdown("### 数据更新")
+    uploaded_file = st.file_uploader(
+        "上传新数据文件（Excel格式）",
+        type=['xlsx', 'xls'],
+        help="上传与原始数据格式相同的Excel文件来更新数据"
     )
-)
 
-# 配置x轴，添加range selector和range slider，与第一张图保持一致
-fig2.update_xaxes(
-    rangeslider_visible=True,
-    tickformat='%Y-%m',
-    tickangle=0,
-    range=[first_change_date, df_res2.index[-1]]  # 与第一张图保持相同的x轴范围
-)
+    if uploaded_file is not None:
+        try:
+            # 读取上传的新数据
+            new_data = pd.read_excel(uploaded_file)
 
-# 显示仓位与煤价对比图表
-st.plotly_chart(fig2, width='stretch')
+            # 验证数据格式
+            required_cols = ['日期', '秦皇岛5500K动力末煤平仓价', '全环节库存', '需求',
+                           '库存可用天数', '电厂月耗同比', '煤矿库存同比']
 
-# 添加分隔线
+            if all(col in new_data.columns for col in required_cols):
+                st.success(f"✅ 成功读取新数据，共 {len(new_data)} 行")
+
+                if st.button("🔄 使用新数据重新计算", type="primary"):
+                    # 使用新数据替换原始数据
+                    raw_data = new_data.copy()
+                    raw_data.index = pd.to_datetime(raw_data['日期'])
+
+                    # 重新运行回测
+                    df_res1 = Backtest(raw_data,
+                                      buy_condition = "(df['全环节库存'] - df['需求']) < 0",
+                                      sell_condition = "0")
+
+                    df_res2 = Backtest(raw_data,
+                                      buy_condition = "(df['全环节库存'] - df['需求']) < 0",
+                                      sell_condition = "(df['电厂月耗同比'] < 0) & (df['煤矿库存同比'] > 0)")
+
+                    df_res3 = Backtest(raw_data,
+                                      buy_condition = "((df['全环节库存'] - df['需求']) < 0) & ((df['库存可用天数'] - df['库存可用天数'].expanding().quantile(0.75)) < 0)",
+                                      sell_condition = "(df['电厂月耗同比'] < 0) & (df['煤矿库存同比'] > 0)")
+
+                    st.success("✅ 数据已更新，回测已重新计算！")
+                    st.rerun()
+            else:
+                missing_cols = [col for col in required_cols if col not in new_data.columns]
+                st.error(f"❌ 数据格式错误！缺少以下列: {', '.join(missing_cols)}")
+
+        except Exception as e:
+            st.error(f"❌ 读取文件失败: {str(e)}")
+
 st.divider()
 
-# 创建第三张图表：买入信号、空仓信号与煤价走势
-fig3 = go.Figure()
-# 为策略2创建综合信号列：买入为1，空仓为-1，无信号为0
-df_res2['综合信号'] = 0
-df_res2.loc[df_res2['买入信号'] == 1, '综合信号'] = 1
-df_res2.loc[df_res2['空仓信号'] == 1, '综合信号'] = -1
-# 添加灰色水平线y=0
-fig3.add_shape(
-    type='line',
-    x0=df_res2.index[0],
-    y0=0,
-    x1=df_res2.index[-1],
-    y1=0,
-    line=dict(
-        color='gray',
-        width=2,
-        dash='solid'
-    ),
-    name='零线'
-)
-# 添加买入信号填充区域
-fig3.add_trace(go.Scatter(
-    x=df_res2.index, 
-    y=df_res2['买入信号'],
-    name='买入信号',
-    mode='lines',
-    line=dict(color='red', width=2),
-    fill='tozeroy',
-    fillcolor='rgba(255, 0, 0, 0.2)',
-    yaxis='y1',
-    hovertemplate='日期: %{x}<br>信号: 买入<extra></extra>'
-))
-# 添加空仓信号填充区域
-fig3.add_trace(go.Scatter(
-    x=df_res2.index, 
-    y=-df_res2['空仓信号'],
-    name='空仓信号',
-    mode='lines',
-    line=dict(color='green', width=2),
-    fill='tozeroy',
-    fillcolor='rgba(0, 255, 0, 0.2)',
-    yaxis='y1',
-    hovertemplate='日期: %{x}<br>信号: 空仓<extra></extra>'
-))
-# 添加煤价（右轴）
-fig3.add_trace(go.Scatter(
-    x=df_res2.index, 
-    y=df_res2['秦皇岛5500K动力末煤平仓价'],
-    name='秦皇岛5500K动力末煤平仓价',
-    line=dict(color='blue', width=2),
-    yaxis='y2'
-))
-# 更新图表布局
-fig3.update_layout(
-    title='开空仓信号与煤价走势对比',
-    xaxis_title='日期',
-    height=500,
-    template='plotly_white',
-    showlegend=True,
-    legend=dict(
-        orientation='h',
-        yanchor='bottom',
-        y=1.02,
-        xanchor='right',
-        x=1
-    ),
-    hovermode='x unified',
-    yaxis=dict(
-        title='信号',
-        range=[-1.2, 1.2],
-        tickvals=[-1, 0, 1],
-        ticktext=['空仓', '无', '买入'],
-        side='left'
-    ),
-    yaxis2=dict(
-        title='煤价（元/吨）',
-        overlaying='y',
-        side='right'
+
+left_co, cent_co, last_co = st.columns([1, 3, 1])
+with cent_co:
+    # 创建策略对比图表
+    fig = go.Figure()
+    # 添加先验仓位净值（所有策略共享）
+    fig.add_trace(go.Scatter(
+        x=df_res1.index, 
+        y=df_res1['先验仓位净值'],
+        name='先验净值',
+        line=dict(color='gray', width=2)
+    ))
+    # 添加策略1的仓位净值
+    fig.add_trace(go.Scatter(
+        x=df_res1.index, 
+        y=df_res1['仓位净值'],
+        name='策略1',
+        line=dict(color='gold', width=2)
+    ))
+    # 添加策略2的仓位净值
+    fig.add_trace(go.Scatter(
+        x=df_res2.index, 
+        y=df_res2['仓位净值'],
+        name='策略2',
+        line=dict(color='red', width=2)
+    ))
+    # 添加策略3的仓位净值
+    fig.add_trace(go.Scatter(
+        x=df_res3.index, 
+        y=df_res3['仓位净值'],
+        name='策略3',
+        line=dict(color='pink', width=2)
+    ))
+
+    # 更新图表布局
+    fig.update_layout(
+        title='不同策略净值对比',
+        xaxis_title='日期',
+        yaxis_title='净值',
+        height=500,
+        template='plotly_white',
+        showlegend=True,
+        legend=dict(
+            orientation='h',
+            yanchor='bottom',
+            y=1.02,
+            xanchor='right',
+            x=1
+        ),
+        hovermode='x unified'
     )
-)
-# 配置x轴，添加range selector和range slider，与前两张图保持一致
-fig3.update_xaxes(
-    rangeslider_visible=True,
-    tickformat='%Y-%m',
-    tickangle=0,
-    range=[first_change_date, df_res2.index[-1]]  # 与前两张图保持相同的x轴范围
-)
-# 显示信号与煤价对比图表
-st.plotly_chart(fig3, width='stretch')
 
-# 添加分隔线
-st.divider()
-# 创建第四张图表：全环节库存、需求与煤价
-fig4 = go.Figure()
-# 计算库存-需求差值
-# 使用原始数据，因为在Backtest函数中已经对这些列进行了shift(1)处理
-inventory_demand_diff = df_res2['全环节库存'] - df_res2['需求']
-# 添加全环节库存（左轴）
-fig4.add_trace(go.Scatter(
-    x=df_res2.index, 
-    y=df_res2['全环节库存'],
-    name='全环节库存',
-    mode='lines',
-    line=dict(color='blue', width=2),
-    yaxis='y1',
-    hovertemplate='日期: %{x}<br>全环节库存: %{y}<extra></extra>'
-))
-# 添加需求（左轴）
-fig4.add_trace(go.Scatter(
-    x=df_res2.index, 
-    y=df_res2['需求'],
-    name='需求',
-    mode='lines',
-    line=dict(color='red', width=2),
-    yaxis='y1',
-    hovertemplate='日期: %{x}<br>需求: %{y}<extra></extra>'
-))
-# 添加库存-需求差值填充区域（左轴）
-fig4.add_trace(go.Scatter(
-    x=df_res2.index, 
-    y=inventory_demand_diff,
-    name='库存-需求',
-    mode='lines',
-    line=dict(color='purple', width=2),
-    fill='tozeroy',
-    fillcolor='rgba(128, 0, 128, 0.2)',
-    yaxis='y1',
-    hovertemplate='日期: %{x}<br>库存-需求差值: %{y}<extra></extra>'
-))
-
-# 添加煤价（右轴）
-fig4.add_trace(go.Scatter(
-    x=df_res2.index, 
-    y=df_res2['秦皇岛5500K动力末煤平仓价'],
-    name='秦皇岛5500K动力末煤平仓价',
-    mode='lines',
-    line=dict(color='orange', width=2),
-    yaxis='y2',
-    hovertemplate='日期: %{x}<br>煤价: %{y}元/吨<extra></extra>'
-))
-
-# 更新图表布局
-fig4.update_layout(
-    title='全环节库存、需求与煤价走势',
-    xaxis_title='日期',
-    height=500,
-    template='plotly_white',
-    showlegend=True,
-    legend=dict(
-        orientation='h',
-        yanchor='bottom',
-        y=1.02,
-        xanchor='right',
-        x=1
-    ),
-    hovermode='x unified',
-    yaxis=dict(
-        title='库存/需求',
-        side='left'
-    ),
-    yaxis2=dict(
-        title='煤价（元/吨）',
-        overlaying='y',
-        side='right'
+    # 配置x轴，添加range selector和range slider
+    fig.update_xaxes(
+        rangeslider_visible=True,
+        tickformat='%Y-%m',
+        tickangle=0,
+        range=[first_change_date, df_res1.index[-1]]  # 设置x轴范围从第一次变化开始
     )
-)
 
-# 配置x轴，添加range selector和range slider，与前几张图保持一致
-fig4.update_xaxes(
-    rangeslider_visible=True,
-    tickformat='%Y-%m',
-    tickangle=0,
-    range=[first_change_date, df_res2.index[-1]]  # 与前几张图保持相同的x轴范围
-)
+    # 显示策略对比图表
+    st.plotly_chart(fig, width='stretch')
+    
+    # 创建指标数据框
+    metrics_data = {
+        '策略': ['策略1', '策略2', '策略3'],
+        '净值收益': [final_nav1, final_nav2, final_nav3],
+        '超额收益': [final_excess_nav1, final_excess_nav2, final_excess_nav3],
+        '最大回撤': [max_dd1, max_dd2, max_dd3]
+    }
+    metrics_df = pd.DataFrame(metrics_data)
+    
+    # 格式化显示
+    metrics_df['净值收益'] = metrics_df['净值收益'].apply(lambda x: f"{x:.2%}")
+    metrics_df['超额收益'] = metrics_df['超额收益'].apply(lambda x: f"{x:.2%}")
+    metrics_df['最大回撤'] = metrics_df['最大回撤'].apply(lambda x: f"{x:.2%}")
+    
+    # 显示指标表格
+    st.markdown("##### 策略绩效指标")
+    st.dataframe(metrics_df.set_index('策略'), width='stretch')
+    
+    
+    st.markdown("##### 最优策略:")
+    st.markdown("""
+        * 库存小于需求时买入
+        * 电厂月耗同比小于0和煤矿库存同比大于0时卖出
+    """)
+    # 添加分隔线
+    st.divider()
 
-# 显示库存、需求与煤价对比图表
-st.plotly_chart(fig4, width='stretch')
+    # 创建策略2仓位与煤价对比图表
+    fig2 = go.Figure()
+    # 添加策略2的仓位（左轴）
+    fig2.add_trace(go.Scatter(
+        x=df_res2.index, 
+        y=df_res2['仓位'],
+        name='仓位',
+        line=dict(color='orange', width=2),
+        yaxis='y1'
+    ))
 
-# 添加分隔线
-st.divider()
-# 创建第五张图表：电厂月耗同比、煤矿库存同比与煤价
-fig5 = go.Figure()
-# 添加电厂月耗同比（左轴）
-fig5.add_trace(go.Scatter(
-    x=df_res2.index, 
-    y=df_res2['电厂月耗同比'],
-    name='电厂月耗同比',
-    mode='lines',
-    line=dict(color='blue', width=2),
-    yaxis='y1',
-    hovertemplate='日期: %{x}<br>电厂月耗同比: %{y:.2%}<extra></extra>'
-))
-# 添加煤矿库存同比（左轴）
-fig5.add_trace(go.Scatter(
-    x=df_res2.index, 
-    y=df_res2['煤矿库存同比'],
-    name='煤矿库存同比',
-    mode='lines',
-    line=dict(color='red', width=2),
-    yaxis='y1',
-    hovertemplate='日期: %{x}<br>煤矿库存同比: %{y:.2%}<extra></extra>'
-))
-# 添加煤价（右轴）
-fig5.add_trace(go.Scatter(
-    x=df_res2.index, 
-    y=df_res2['秦皇岛5500K动力末煤平仓价'],
-    name='秦皇岛5500K动力末煤平仓价',
-    mode='lines',
-    line=dict(color='green', width=2),
-    yaxis='y2',
-    hovertemplate='日期: %{x}<br>煤价: %{y}元/吨<extra></extra>'
-))
-# 更新图表布局
-fig5.update_layout(
-    title='电厂月耗同比、煤矿库存同比与煤价走势',
-    xaxis_title='日期',
-    height=500,
-    template='plotly_white',
-    showlegend=True,
-    legend=dict(
-        orientation='h',
-        yanchor='bottom',
-        y=1.02,
-        xanchor='right',
-        x=1
-    ),
-    hovermode='x unified',
-    yaxis=dict(
-        title='同比增长率（%）',
-        side='left',
-        tickformat='.2%'  # 显示为百分比格式
-    ),
-    yaxis2=dict(
-        title='煤价（元/吨）',
-        overlaying='y',
-        side='right'
+    # 添加仓位填充区域
+    fig2.add_trace(go.Scatter(
+        x=df_res2.index, 
+        y=df_res2['仓位'],
+        name='仓位填充',
+        fill='tozeroy',
+        line=dict(width=0),
+        fillcolor='rgba(255, 165, 0, 0.15)',
+        yaxis='y1',
+        showlegend=False,
+        hoverinfo='skip'  # 鼠标悬停时不显示此填充区域的信息
+    ))
+
+    # 添加煤价（右轴）
+    fig2.add_trace(go.Scatter(
+        x=df_res2.index, 
+        y=df_res2['秦皇岛5500K动力末煤平仓价'],
+        name='秦皇岛5500K动力末煤平仓价',
+        line=dict(color='black', width=2),
+        yaxis='y2'
+    ))
+
+    # 更新图表布局
+    fig2.update_layout(
+        title='最优策略仓位与煤价走势对比',
+        xaxis_title='日期',
+        height=500,
+        template='plotly_white',
+        showlegend=True,
+        legend=dict(
+            orientation='h',
+            yanchor='bottom',
+            y=1.02,
+            xanchor='right',
+            x=1
+        ),
+        hovermode='x unified',
+        yaxis=dict(
+            title='仓位',
+            range=[0, 1.1],
+            side='left'
+        ),
+        yaxis2=dict(
+            title='煤价（元/吨）',
+            overlaying='y',
+            side='right'
+        )
     )
-)
-# 配置x轴，添加range selector和range slider，与前几张图保持一致
-fig5.update_xaxes(
-    rangeslider_visible=True,
-    tickformat='%Y-%m',
-    tickangle=0,
-    range=[first_change_date, df_res2.index[-1]]  # 与前几张图保持相同的x轴范围
-)
-# 显示电厂月耗同比、煤矿库存同比与煤价对比图表
-st.plotly_chart(fig5, width='stretch')
+
+    # 配置x轴，添加range selector和range slider，与第一张图保持一致
+    fig2.update_xaxes(
+        rangeslider_visible=True,
+        tickformat='%Y-%m',
+        tickangle=0,
+        range=[first_change_date, df_res2.index[-1]]  # 与第一张图保持相同的x轴范围
+    )
+
+    # 显示仓位与煤价对比图表
+    st.plotly_chart(fig2, width='stretch')
+
+    # 添加分隔线
+    st.divider()
+
+    # 创建第三张图表：买入信号、空仓信号与煤价走势
+    fig3 = go.Figure()
+    # 为策略2创建综合信号列：买入为1，空仓为-1，无信号为0
+    df_res2['综合信号'] = 0
+    df_res2.loc[df_res2['买入信号'] == 1, '综合信号'] = 1
+    df_res2.loc[df_res2['空仓信号'] == 1, '综合信号'] = -1
+    # 添加灰色水平线y=0
+    fig3.add_shape(
+        type='line',
+        x0=df_res2.index[0],
+        y0=0,
+        x1=df_res2.index[-1],
+        y1=0,
+        line=dict(
+            color='gray',
+            width=2,
+            dash='solid'
+        ),
+        name='零线'
+    )
+    # 添加买入信号填充区域
+    fig3.add_trace(go.Scatter(
+        x=df_res2.index, 
+        y=df_res2['买入信号'],
+        name='买入信号',
+        mode='lines',
+        line=dict(color='red', width=2),
+        fill='tozeroy',
+        fillcolor='rgba(255, 0, 0, 0.2)',
+        yaxis='y1',
+        hovertemplate='日期: %{x}<br>信号: 买入<extra></extra>'
+    ))
+    # 添加空仓信号填充区域
+    fig3.add_trace(go.Scatter(
+        x=df_res2.index, 
+        y=-df_res2['空仓信号'],
+        name='卖出信号',
+        mode='lines',
+        line=dict(color='green', width=2),
+        fill='tozeroy',
+        fillcolor='rgba(0, 255, 0, 0.2)',
+        yaxis='y1',
+        hovertemplate='日期: %{x}<br>信号: 空仓<extra></extra>'
+    ))
+    # 添加煤价（右轴）
+    fig3.add_trace(go.Scatter(
+        x=df_res2.index, 
+        y=df_res2['秦皇岛5500K动力末煤平仓价'],
+        name='秦皇岛5500K动力末煤平仓价',
+        line=dict(color='black', width=2),
+        yaxis='y2'
+    ))
+    # 更新图表布局
+    fig3.update_layout(
+        title='买入卖出信号与煤价走势对比',
+        xaxis_title='日期',
+        height=500,
+        template='plotly_white',
+        showlegend=True,
+        legend=dict(
+            orientation='h',
+            yanchor='bottom',
+            y=1.02,
+            xanchor='right',
+            x=1
+        ),
+        hovermode='x unified',
+        yaxis=dict(
+            title='信号',
+            range=[-1.2, 1.2],
+            tickvals=[-1, 0, 1],
+            ticktext=['卖出', '无', '买入'],
+            side='left'
+        ),
+        yaxis2=dict(
+            title='煤价（元/吨）',
+            overlaying='y',
+            side='right'
+        )
+    )
+    # 配置x轴，添加range selector和range slider，与前两张图保持一致
+    fig3.update_xaxes(
+        rangeslider_visible=True,
+        tickformat='%Y-%m',
+        tickangle=0,
+        range=[first_change_date, df_res2.index[-1]]  # 与前两张图保持相同的x轴范围
+    )
+    # 显示信号与煤价对比图表
+    st.plotly_chart(fig3, width='stretch')
+
+    # 添加分隔线
+    st.divider()
+    # 创建第四张图表：全环节库存、需求与煤价
+    fig4 = go.Figure()
+    # 计算库存-需求差值
+    # 使用原始数据，因为在Backtest函数中已经对这些列进行了shift(1)处理
+    inventory_demand_diff = df_res2['全环节库存'] - df_res2['需求']
+    # 添加全环节库存（左轴）
+    fig4.add_trace(go.Scatter(
+        x=df_res2.index, 
+        y=df_res2['全环节库存'],
+        name='全环节库存',
+        mode='lines',
+        line=dict(color='gold', width=2),
+        yaxis='y1',
+        hovertemplate='日期: %{x}<br>全环节库存: %{y}<extra></extra>'
+    ))
+    # 添加需求（左轴）
+    fig4.add_trace(go.Scatter(
+        x=df_res2.index, 
+        y=df_res2['需求'],
+        name='需求',
+        mode='lines',
+        line=dict(color='orange', width=2),
+        yaxis='y1',
+        hovertemplate='日期: %{x}<br>需求: %{y}<extra></extra>'
+    ))
+    # 添加库存-需求差值填充区域（左轴）
+    fig4.add_trace(go.Scatter(
+        x=df_res2.index, 
+        y=inventory_demand_diff,
+        name='库存-需求',
+        mode='lines',
+        line=dict(color='silver', width=2),
+        fill='tozeroy',
+        fillcolor='rgba(192, 192, 192, 0.2)',
+        yaxis='y1',
+        hovertemplate='日期: %{x}<br>库存-需求差值: %{y}<extra></extra>'
+    ))
+
+    # 添加煤价（右轴）
+    fig4.add_trace(go.Scatter(
+        x=df_res2.index, 
+        y=df_res2['秦皇岛5500K动力末煤平仓价'],
+        name='秦皇岛5500K动力末煤平仓价',
+        mode='lines',
+        line=dict(color='black', width=2),
+        yaxis='y2',
+        hovertemplate='日期: %{x}<br>煤价: %{y}元/吨<extra></extra>'
+    ))
+
+    # 更新图表布局
+    fig4.update_layout(
+        title='全环节库存、需求与煤价走势',
+        xaxis_title='日期',
+        height=500,
+        template='plotly_white',
+        showlegend=True,
+        legend=dict(
+            orientation='h',
+            yanchor='bottom',
+            y=1.02,
+            xanchor='right',
+            x=1
+        ),
+        hovermode='x unified',
+        yaxis=dict(
+            title='库存/需求',
+            side='left'
+        ),
+        yaxis2=dict(
+            title='煤价（元/吨）',
+            overlaying='y',
+            side='right'
+        )
+    )
+
+    # 配置x轴，添加range selector和range slider，与前几张图保持一致
+    fig4.update_xaxes(
+        rangeslider_visible=True,
+        tickformat='%Y-%m',
+        tickangle=0,
+        range=[first_change_date, df_res2.index[-1]]  # 与前几张图保持相同的x轴范围
+    )
+
+    # 显示库存、需求与煤价对比图表
+    st.plotly_chart(fig4, width='stretch')
+
+    # 添加分隔线
+    st.divider()
+    # 创建第五张图表：电厂月耗同比、煤矿库存同比与煤价
+    fig5 = go.Figure()
+    # 添加电厂月耗同比（左轴）
+    fig5.add_trace(go.Scatter(
+        x=df_res2.index, 
+        y=df_res2['电厂月耗同比'],
+        name='电厂月耗同比',
+        mode='lines',
+        line=dict(color='orange', width=2),
+        fill='tozeroy',
+        fillcolor='rgba(255, 165, 0, 0.2)',
+        yaxis='y1',
+        hovertemplate='日期: %{x}<br>电厂月耗同比: %{y:.2%}<extra></extra>'
+    ))
+    # 添加煤矿库存同比（左轴）
+    fig5.add_trace(go.Scatter(
+        x=df_res2.index, 
+        y=df_res2['煤矿库存同比'],
+        name='煤矿库存同比',
+        mode='lines',
+        line=dict(color='gold', width=2),
+        fill='tozeroy',
+        fillcolor='rgba(255, 215, 0, 0.2)',
+        yaxis='y1',
+        hovertemplate='日期: %{x}<br>煤矿库存同比: %{y:.2%}<extra></extra>'
+    ))
+    # 添加煤价（右轴）
+    fig5.add_trace(go.Scatter(
+        x=df_res2.index, 
+        y=df_res2['秦皇岛5500K动力末煤平仓价'],
+        name='秦皇岛5500K动力末煤平仓价',
+        mode='lines',
+        line=dict(color='black', width=2),
+        yaxis='y2',
+        hovertemplate='日期: %{x}<br>煤价: %{y}元/吨<extra></extra>'
+    ))
+    # 更新图表布局
+    fig5.update_layout(
+        title='电厂月耗同比、煤矿库存同比与煤价走势',
+        xaxis_title='日期',
+        height=500,
+        template='plotly_white',
+        showlegend=True,
+        legend=dict(
+            orientation='h',
+            yanchor='bottom',
+            y=1.02,
+            xanchor='right',
+            x=1
+        ),
+        hovermode='x unified',
+        yaxis=dict(
+            title='同比增长率（%）',
+            side='left',
+            tickformat='.2%'  # 显示为百分比格式
+        ),
+        yaxis2=dict(
+            title='煤价（元/吨）',
+            overlaying='y',
+            side='right'
+        )
+    )
+    # 配置x轴，添加range selector和range slider，与前几张图保持一致
+    fig5.update_xaxes(
+        rangeslider_visible=True,
+        tickformat='%Y-%m',
+        tickangle=0,
+        range=[first_change_date, df_res2.index[-1]]  # 与前几张图保持相同的x轴范围
+    )
+    # 显示电厂月耗同比、煤矿库存同比与煤价对比图表
+    st.plotly_chart(fig5, width='stretch')
 
 
 
