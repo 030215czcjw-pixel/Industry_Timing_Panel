@@ -172,8 +172,11 @@ def Backtest(df, buy_condition, sell_condition):
     return df
 
 # 加载数据
-raw_data = pd.read_excel("data/data.xlsx")
-raw_data.index = pd.to_datetime(raw_data['日期'])
+if 'raw_data' not in st.session_state:
+    st.session_state.raw_data = pd.read_excel("data/data.xlsx")
+    st.session_state.raw_data.index = pd.to_datetime(st.session_state.raw_data['日期'])
+
+raw_data = st.session_state.raw_data
 
 # 调用回测函数
 df_res1 = Backtest(raw_data, 
@@ -259,7 +262,8 @@ with data_col2:
     uploaded_file = st.file_uploader(
         "上传新数据文件（Excel格式）",
         type=['xlsx', 'xls'],
-        help="上传与原始数据格式相同的Excel文件来更新数据"
+        help="上传与原始数据格式相同的Excel文件来更新数据",
+        key="file_uploader_key"
     )
 
     if uploaded_file is not None:
@@ -276,21 +280,8 @@ with data_col2:
 
                 if st.button("🔄 使用新数据重新计算", type="primary"):
                     # 使用新数据替换原始数据
-                    raw_data = new_data.copy()
-                    raw_data.index = pd.to_datetime(raw_data['日期'])
-
-                    # 重新运行回测
-                    df_res1 = Backtest(raw_data,
-                                      buy_condition = "(df['全环节库存'] - df['需求']) < 0",
-                                      sell_condition = "0")
-
-                    df_res2 = Backtest(raw_data,
-                                      buy_condition = "(df['全环节库存'] - df['需求']) < 0",
-                                      sell_condition = "(df['电厂月耗同比'] < 0) & (df['煤矿库存同比'] > 0)")
-
-                    df_res3 = Backtest(raw_data,
-                                      buy_condition = "((df['全环节库存'] - df['需求']) < 0) & ((df['库存可用天数'] - df['库存可用天数'].expanding().quantile(0.75)) < 0)",
-                                      sell_condition = "(df['电厂月耗同比'] < 0) & (df['煤矿库存同比'] > 0)")
+                    st.session_state.raw_data = new_data.copy()
+                    st.session_state.raw_data.index = pd.to_datetime(st.session_state.raw_data['日期'])
 
                     st.success("✅ 数据已更新，回测已重新计算！")
                     st.rerun()
@@ -382,7 +373,7 @@ with cent_co:
     
     # 显示指标表格
     st.markdown("##### 策略绩效指标")
-    st.dataframe(metrics_df.set_index('策略'), width='stretch')
+    st.dataframe(metrics_df.set_index('策略'), use_container_width=True)
     
     
     st.markdown("##### 最优策略:")
